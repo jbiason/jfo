@@ -16,3 +16,11 @@ you use it for that.
 WARNING! Again, this is a quick-and-dirty solution. I did some serious work on
 _ignoring_ errors, specially when I shouldn't; code organization is basically
 non-existent. Use at your own risk.
+
+## Copyright
+
+Copyright (C) 2020  Julio Biason
+
+## License
+
+GNU AFFERO GENERAL PUBLIC LICENSE, Version 3.

@@ -18,12 +18,6 @@
 
 use std::collections::HashMap;
 
-use clap::crate_authors;
-use clap::crate_description;
-use clap::crate_name;
-use clap::crate_version;
-use clap::App;
-use clap::Arg;
 use reqwest::blocking;
 use serde_derive::Deserialize;
 
@@ -52,42 +46,26 @@ struct NoteTag {
 }
 
 fn main() {
-    let matches = App::new(crate_name!())
-        .version(crate_version!())
-        .author(crate_authors!())
-        .about(crate_description!())
-        .arg(
-            Arg::with_name("inbox")
-                .long("inbox")
-                .short("i")
-                .takes_value(true)
-                .required(true)
-                .help("Inbox folder name"),
-        )
-        .arg(
-            Arg::with_name("port")
-                .long("port")
-                .short("p")
-                .takes_value(true)
-                .required(true)
-                .default_value("41184")
-                .help("Joplin Web Clipper port"),
-        )
-        .arg(
-            Arg::with_name("token")
-                .long("token")
-                .short("t")
-                .takes_value(true)
-                .required(true)
-                .help("Joplin Web Clipper access token"),
-        )
-        .get_matches();
+    match (
+        std::env::args().nth(1),
+        std::env::args().nth(2),
+        std::env::args().nth(3),
+    ) {
+        (Some(folder), Some(token), Some(port)) => process(folder, token, port),
+        (Some(folder), Some(token), None) => process(folder, token, "41184".to_string()),
+        (_, _, _) => usage(),
+    }
+}
 
-    let inbox_name = matches.value_of("inbox").unwrap();
-    let port = matches.value_of("port").unwrap();
-    let token = matches.value_of("token").unwrap();
+fn usage() {
+    println!("Usage: jfo <inbox> <token> [port]\n");
+    println!("<inbox>: Base notebook name where the posts will be checked;");
+    println!("<token>: Token provided by the webclipper to access the notes;");
+    println!("[port]: Web clipper port, defaults to 41184");
+}
 
-    let folder_list = dbg!(folders(&url(port, token, &"folders")));
+fn process(inbox_name: String, token: String, port: String) {
+    let folder_list = dbg!(folders(&url(&port, &token, &"folders")));
     let inbox = dbg!(folder_list
         .into_iter()
         .filter(|folder| folder.title == inbox_name)
@@ -103,10 +81,10 @@ fn main() {
     }
     dbg!(&children);
 
-    get_notes(&dbg!(folder_url(port, token, &inbox.id)))
+    get_notes(&dbg!(folder_url(&port, &token, &inbox.id)))
         .iter()
         .filter(|note| {
-            let tag_url = dbg!(note_tags_url(port, token, &note.id));
+            let tag_url = dbg!(note_tags_url(&port, &token, &note.id));
             let tags = get_note_tags(&tag_url);
             tags.len() > 0
         })
@@ -116,12 +94,12 @@ fn main() {
             let new_folder_id = dbg!(if children.contains_key(author) {
                 children.get(author).unwrap().into()
             } else {
-                let new_folder_url = url(port, token, &"folders");
+                let new_folder_url = url(&port, &token, &"folders");
                 let result = create_folder(&new_folder_url, author, &inbox_id);
                 result.id
             });
 
-            let url = note_url(port, token, &note.id);
+            let url = note_url(&port, &token, &note.id);
             move_note_to_folder(&url, &note.id, &new_folder_id, &id);
         });
 }

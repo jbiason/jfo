@@ -21,7 +21,12 @@ use std::collections::HashMap;
 use reqwest::blocking;
 use serde_derive::Deserialize;
 
-#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct FolderList {
+    items: Vec<Folder>,
+    has_more: bool,
+}
+
 #[derive(Debug, Deserialize)]
 struct Folder {
     id: String,
@@ -30,7 +35,12 @@ struct Folder {
     parent_id: String,
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct NoteList {
+    items: Vec<Note>,
+    has_more: bool,
+}
+
 #[derive(Debug, Deserialize)]
 struct Note {
     id: String,
@@ -38,7 +48,12 @@ struct Note {
     parent_id: String,
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct NoteTagList {
+    items: Vec<NoteTag>,
+    has_more: bool,
+}
+
 #[derive(Debug, Deserialize)]
 struct NoteTag {
     id: String,
@@ -65,23 +80,22 @@ fn usage() {
 }
 
 fn process(inbox_name: String, token: String, port: String) {
-    let folder_list = dbg!(folders(&url(&port, &token, &"folders")));
-    let inbox = dbg!(folder_list
-        .into_iter()
-        .filter(|folder| folder.title == inbox_name)
-        .take(1)
-        .collect::<Vec<Folder>>()
-        .pop()
+    let mut folder_list = dbg!(folders(&url(&port, &token, &"folders")));
+    folder_list.sort_by(|a, b| a.title.cmp(&b.title));
+    let inbox_pos = dbg!(folder_list
+        .binary_search_by(|folder| folder.title.cmp(&inbox_name))
         .unwrap());
-    let inbox_id = inbox.id.to_string();
+    let inbox_id = folder_list[inbox_pos].id.to_string();
 
     let mut children: HashMap<String, String> = HashMap::new();
-    for folder in inbox.children.unwrap().iter() {
-        children.insert(folder.title.to_string(), folder.id.to_string());
+    for folder in folder_list.iter() {
+        if folder.parent_id == inbox_id {
+            children.insert(folder.title.to_string(), folder.id.to_string());
+        }
     }
     dbg!(&children);
 
-    get_notes(&dbg!(folder_url(&port, &token, &inbox.id)))
+    get_notes(&dbg!(folder_url(&port, &token, &inbox_id)))
         .iter()
         .filter(|note| {
             let tag_url = dbg!(note_tags_url(&port, &token, &note.id));
@@ -129,18 +143,48 @@ fn note_tags_url(port: &str, token: &str, note_id: &str) -> String {
 }
 
 fn folders(url: &str) -> Vec<Folder> {
-    let folders: Vec<Folder> = blocking::get(url).unwrap().json().unwrap();
-    folders
+    let mut result: Vec<Folder> = Vec::new();
+    let mut has_more = true;
+    let mut page = 1;
+
+    while has_more {
+        let paged_url = format!("{base}&page={page}", base = url, page = page);
+        let folder_list: FolderList = dbg!(blocking::get(&paged_url).unwrap().json().unwrap());
+        has_more = folder_list.has_more;
+        result.extend(folder_list.items);
+        page += 1;
+    }
+    result
 }
 
 fn get_notes(url: &str) -> Vec<Note> {
-    let notes: Vec<Note> = blocking::get(url).unwrap().json().unwrap();
-    notes
+    let mut result: Vec<Note> = Vec::new();
+    let mut has_more = true;
+    let mut page = 1;
+
+    while has_more {
+        let paged_url = format!("{base}&page={page}", base = url, page = page);
+        let note_list: NoteList = blocking::get(&paged_url).unwrap().json().unwrap();
+        has_more = note_list.has_more;
+        result.extend(note_list.items);
+        page += 1;
+    }
+    result
 }
 
 fn get_note_tags(url: &str) -> Vec<NoteTag> {
-    let tags: Vec<NoteTag> = blocking::get(url).unwrap().json().unwrap();
-    tags
+    let mut result: Vec<NoteTag> = Vec::new();
+    let mut has_more = true;
+    let mut page = 1;
+
+    while has_more {
+        let paged_url = format!("{base}&page={page}", base = url, page = page);
+        let tags: NoteTagList = blocking::get(&paged_url).unwrap().json().unwrap();
+        has_more = tags.has_more;
+        result.extend(tags.items);
+        page += 1;
+    }
+    result
 }
 
 fn create_folder(url: &str, title: &str, parent_id: &str) -> Folder {
